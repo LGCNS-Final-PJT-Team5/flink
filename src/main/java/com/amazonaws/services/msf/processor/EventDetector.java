@@ -141,13 +141,14 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
 
 
     private void detectCollision(Telemetry t, LocalDateTime time, Collector<String> out) throws Exception {
-        // 충돌이 감지되지 않았을 경우
-        if (t.collision.isEmpty()) {wasCollision.update(false);return;}
+        boolean isCollision = t.collision != null && !t.collision.isEmpty();
 
-        Boolean prev = wasCollision.value();
-        if (Boolean.TRUE.equals(prev)) return; // 이전에도 충돌 상태였다면 무시
+        Boolean was = wasCollision.value();
 
-        // 충돌 최초 감지
+        if (!isCollision) {wasCollision.update(false);return;}
+
+        if (Boolean.TRUE.equals(was)) return;
+
         out.collect(getEventDTO(EventType.COLLISION, t, time).toString());
         wasCollision.update(true);
     }
