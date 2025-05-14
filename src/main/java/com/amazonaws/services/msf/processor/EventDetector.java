@@ -24,6 +24,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
     private transient ValueState<Boolean> wasOverspeed;
     private transient ValueState<Boolean> wasRapidAccel;
     private transient ValueState<Boolean> wasRapidDecel;
+    private transient ValueState<Boolean> wasCollision;
     private transient ValueState<Long> lastControlChangeTime;
     private transient ValueState<Double> lastThrottle;
     private transient ValueState<Double> lastBrake;
@@ -46,6 +47,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         wasOverspeed = getRuntimeContext().getState(new ValueStateDescriptor<>("wasOverspeed", Boolean.class));
         wasRapidAccel = getRuntimeContext().getState(new ValueStateDescriptor<>("wasRapidAccel", Boolean.class));
         wasRapidDecel = getRuntimeContext().getState(new ValueStateDescriptor<>("wasRapidDecel", Boolean.class));
+        wasCollision = getRuntimeContext().getState(new ValueStateDescriptor<>("wasCollision", Boolean.class));
 
     }
 
@@ -57,9 +59,10 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         LocalDateTime time = LocalDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.of("Asia/Seoul"));
 
         detectIdle(t, now, time, out);
-        detectAccelOrDecel(t, time, out);
+        // detectAccelOrDecel(t, time, out);
         detectOverspeed(t, time, out);
         detectInvasion(t, time, out);
+        detectCollision(t, time, out);
         // 추후 detectNoControlInput(t, now, time, out) 등 추가 가능
     }
 
@@ -134,6 +137,19 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         // 침범 최초 감지 시 이벤트 발생
         out.collect(getEventDTO(EventType.INVASION, t, time).toString());
         lastInvasionState.update(true);
+    }
+
+
+    private void detectCollision(Telemetry t, LocalDateTime time, Collector<String> out) throws Exception {
+        // 충돌이 감지되지 않았을 경우
+        if (t.collision.isEmpty()) {wasCollision.update(false);return;}
+
+        Boolean prev = wasCollision.value();
+        if (Boolean.TRUE.equals(prev)) return; // 이전에도 충돌 상태였다면 무시
+
+        // 충돌 최초 감지
+        out.collect(getEventDTO(EventType.COLLISION, t, time).toString());
+        wasCollision.update(true);
     }
 
     private Event getEventDTO(EventType type, Telemetry t, LocalDateTime time){

@@ -12,7 +12,10 @@ public enum EventType {
     // TODO
     NO_OPERATION("미조작"),
     SHARP_TURN("급회전"),
-    SAFE_DISTANCE_VIOLATION("안전 거리 미준수");
+    SAFE_DISTANCE_VIOLATION("안전 거리 미준수"),
+
+    COLLISION("충돌");
+
     private final String description;
 
     EventType(String description) {
