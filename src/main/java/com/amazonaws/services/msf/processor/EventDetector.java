@@ -34,11 +34,10 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
     private transient ValueState<Double> lastNoOpBrake;
     private transient ValueState<Double> lastNoOpSteer;
     private transient ValueState<Boolean> wasSharpTurn;
+    private transient ValueState<Boolean> wasTooClose;
 
 
 
-    // 샘플 데이터
-    private final Long userId = 1L;
 
     @Override
     public void open(org.apache.flink.configuration.Configuration parameters) {
@@ -57,6 +56,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         lastNoOpBrake = getRuntimeContext().getState(new ValueStateDescriptor<>("lastNoOpBrake", Double.class));
         lastNoOpSteer = getRuntimeContext().getState(new ValueStateDescriptor<>("lastNoOpSteer", Double.class));
         wasSharpTurn = getRuntimeContext().getState(new ValueStateDescriptor<>("wasSharpTurn", Boolean.class));
+        wasTooClose = getRuntimeContext().getState(new ValueStateDescriptor<>("wasTooClose", Boolean.class));
 
     }
 
@@ -74,6 +74,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         detectCollision(t, time, out);
         detectNoOperation(t, now, time, out);
         detectSharpTurn(t, time, out);
+        detectUnsafeDistance(t, time, out);
     }
 
     // 공회전 감지
@@ -81,7 +82,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         if (t.velocity != 0) {zeroSince.clear(); return;}
         Long since = zeroSince.value();
         if (since == null) {zeroSince.update(now); return;}
-        if(now - since < 15_000) {return;}
+        if(now - since < 60_000) {return;}
 
         out.collect(mapper.writeValueAsString(getEventDTO(EventType.IDLE_ENGINE, t, time)));
         zeroSince.update(now);
@@ -173,6 +174,9 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
 
         boolean changed = false;
 
+        if (t.velocity <= 0) {return;}
+
+
         if (lastThrottleVal == null || !lastThrottleVal.equals(t.getThrottle())) {
             lastNoOpThrottle.update(t.getThrottle());
             changed = true;
@@ -204,16 +208,10 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
 
     // 급회전
     private void detectSharpTurn(Telemetry t, LocalDateTime time, Collector<String> out) throws Exception {
-        if (t.velocity <= 30) {
-            wasSharpTurn.update(false);
-            return;
-        }
+        if (t.velocity <= 30) {wasSharpTurn.update(false);return;}
 
         double steerRatio = Math.abs(t.getSteer());
-        if (steerRatio <= 0.6) {
-            wasSharpTurn.update(false);
-            return;
-        }
+        if (steerRatio <= 0.6) {wasSharpTurn.update(false);return;}
 
         if (Boolean.TRUE.equals(wasSharpTurn.value())) return;
 
@@ -221,9 +219,25 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         wasSharpTurn.update(true);
     }
 
+
+    // 안전 거리 미준수
+    private void detectUnsafeDistance(Telemetry t, LocalDateTime time, Collector<String> out) throws Exception {
+        if (t.velocity < 20) {wasTooClose.update(false); return;}
+
+        boolean isTooClose = t.frontDistance < t.velocity;
+
+        if (!isTooClose) {wasTooClose.update(false); return;}
+
+        // 이전에도 너무 가까웠다면 중복 감지 방지
+        if (Boolean.TRUE.equals(wasTooClose.value())) return;
+
+        out.collect(mapper.writeValueAsString(getEventDTO(EventType.SAFE_DISTANCE_VIOLATION, t, time)));
+        wasTooClose.update(true);
+    }
+
     private Event getEventDTO(EventType type, Telemetry t, LocalDateTime time){
         return Event.builder()
-                .userId(userId)
+                .userId(t.userId)
                 .type(type.toString())
                 .time(time)
                 .gnssX(t.gnssX)

@@ -1,6 +1,7 @@
 package com.amazonaws.services.msf;
 
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
+import com.amazonaws.services.msf.model.Telemetry;
 import com.amazonaws.services.msf.processor.EventDetector;
 import com.amazonaws.services.msf.sink.SqsSink;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
