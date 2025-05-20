@@ -4,10 +4,14 @@ import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.event.EventType;
 import com.amazonaws.services.msf.model.Telemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.util.Collector;
+
+
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -25,10 +29,12 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
     private transient ValueState<Boolean> wasRapidAccel;
     private transient ValueState<Boolean> wasRapidDecel;
     private transient ValueState<Boolean> wasCollision;
-    private transient ValueState<Long> lastControlChangeTime;
-    private transient ValueState<Double> lastThrottle;
-    private transient ValueState<Double> lastBrake;
-    private transient ValueState<Double> lastSteer;
+    private transient ValueState<Long> lastNoOpCheckTime;
+    private transient ValueState<Double> lastNoOpThrottle;
+    private transient ValueState<Double> lastNoOpBrake;
+    private transient ValueState<Double> lastNoOpSteer;
+    private transient ValueState<Boolean> wasSharpTurn;
+
 
 
     // 샘플 데이터
@@ -37,33 +43,37 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
     @Override
     public void open(org.apache.flink.configuration.Configuration parameters) {
         mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         lastVelocity = getRuntimeContext().getState(new ValueStateDescriptor<>("lastVelocity", Double.class));
         zeroSince = getRuntimeContext().getState(new ValueStateDescriptor<>("zeroSince", Long.class));
-        lastControlChangeTime = getRuntimeContext().getState(new ValueStateDescriptor<>("lastControlChangeTime", Long.class));
-        lastThrottle = getRuntimeContext().getState(new ValueStateDescriptor<>("lastThrottle", Double.class));
-        lastBrake = getRuntimeContext().getState(new ValueStateDescriptor<>("lastBrake", Double.class));
-        lastSteer = getRuntimeContext().getState(new ValueStateDescriptor<>("lastSteer", Double.class));
         lastInvasionState = getRuntimeContext().getState(new ValueStateDescriptor<>("lastInvasionState", Boolean.class));
         wasOverspeed = getRuntimeContext().getState(new ValueStateDescriptor<>("wasOverspeed", Boolean.class));
         wasRapidAccel = getRuntimeContext().getState(new ValueStateDescriptor<>("wasRapidAccel", Boolean.class));
         wasRapidDecel = getRuntimeContext().getState(new ValueStateDescriptor<>("wasRapidDecel", Boolean.class));
         wasCollision = getRuntimeContext().getState(new ValueStateDescriptor<>("wasCollision", Boolean.class));
+        lastNoOpCheckTime = getRuntimeContext().getState(new ValueStateDescriptor<>("lastNoOpCheckTime", Long.class));
+        lastNoOpThrottle = getRuntimeContext().getState(new ValueStateDescriptor<>("lastNoOpThrottle", Double.class));
+        lastNoOpBrake = getRuntimeContext().getState(new ValueStateDescriptor<>("lastNoOpBrake", Double.class));
+        lastNoOpSteer = getRuntimeContext().getState(new ValueStateDescriptor<>("lastNoOpSteer", Double.class));
+        wasSharpTurn = getRuntimeContext().getState(new ValueStateDescriptor<>("wasSharpTurn", Boolean.class));
 
     }
 
     @Override
     public void flatMap(String json, Collector<String> out) throws Exception {
         Telemetry t = mapper.readValue(json, Telemetry.class);
-
+        // System.out.println(t.toString());
         long now = System.currentTimeMillis();
         LocalDateTime time = LocalDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.of("Asia/Seoul"));
 
         detectIdle(t, now, time, out);
-        // detectAccelOrDecel(t, time, out);
+        detectAccelOrDecel(t, time, out);
         detectOverspeed(t, time, out);
         detectInvasion(t, time, out);
         detectCollision(t, time, out);
-        // 추후 detectNoControlInput(t, now, time, out) 등 추가 가능
+        detectNoOperation(t, now, time, out);
+        detectSharpTurn(t, time, out);
     }
 
     // 공회전 감지
@@ -71,9 +81,9 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         if (t.velocity != 0) {zeroSince.clear(); return;}
         Long since = zeroSince.value();
         if (since == null) {zeroSince.update(now); return;}
-        if(now - since < 10_000) {return;}
+        if(now - since < 15_000) {return;}
 
-        out.collect(getEventDTO(EventType.IDLE_ENGINE, t, time).toString());
+        out.collect(mapper.writeValueAsString(getEventDTO(EventType.IDLE_ENGINE, t, time)));
         zeroSince.update(now);
     }
 
@@ -88,7 +98,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         // 급가속 감지
         if (diff >= 20) {
             if (Boolean.TRUE.equals(wasRapidAccel.value())) return; // 이전에도 급가속이면 리턴
-            out.collect(getEventDTO(EventType.RAPID_ACCELERATION, t, time).toString());
+            out.collect(mapper.writeValueAsString(getEventDTO(EventType.RAPID_ACCELERATION, t, time)));
             wasRapidAccel.update(true);      // 급가속 상태로 전환
             wasRapidDecel.update(false);     // 급감속 상태 해제
             return;
@@ -97,7 +107,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         // 급감속 감지
         if (diff <= -20) {
             if (Boolean.TRUE.equals(wasRapidDecel.value())) return;
-            out.collect(getEventDTO(EventType.RAPID_DECELERATION, t, time).toString());
+            out.collect(mapper.writeValueAsString(getEventDTO(EventType.RAPID_DECELERATION, t, time)));
             wasRapidDecel.update(true);
             wasRapidAccel.update(false);
             return;
@@ -119,7 +129,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         if (!isOverspeed) {wasOverspeed.update(false);return;}
 
         // 여기 도달하면 이전은 과속 아니었고, 현재는 과속
-        out.collect(getEventDTO(EventType.OVERSPEED, t, time).toString());
+        out.collect(mapper.writeValueAsString(getEventDTO(EventType.OVERSPEED, t, time)));
         wasOverspeed.update(true);
     }
 
@@ -135,7 +145,7 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
         if (Boolean.TRUE.equals(wasInvasion)) return;
 
         // 침범 최초 감지 시 이벤트 발생
-        out.collect(getEventDTO(EventType.INVASION, t, time).toString());
+        out.collect(mapper.writeValueAsString(getEventDTO(EventType.INVASION, t, time)));
         lastInvasionState.update(true);
     }
 
@@ -149,8 +159,66 @@ public class EventDetector extends RichFlatMapFunction<String, String> {
 
         if (Boolean.TRUE.equals(was)) return;
 
-        out.collect(getEventDTO(EventType.COLLISION, t, time).toString());
+        out.collect(mapper.writeValueAsString(getEventDTO(EventType.COLLISION, t, time)));
         wasCollision.update(true);
+    }
+
+
+    // 미조작 시간
+    private void detectNoOperation(Telemetry t, long now, LocalDateTime time, Collector<String> out) throws Exception {
+        Double lastThrottleVal = lastNoOpThrottle.value();
+        Double lastBrakeVal = lastNoOpBrake.value();
+        Double lastSteerVal = lastNoOpSteer.value();
+        Long lastChanged = lastNoOpCheckTime.value();
+
+        boolean changed = false;
+
+        if (lastThrottleVal == null || !lastThrottleVal.equals(t.getThrottle())) {
+            lastNoOpThrottle.update(t.getThrottle());
+            changed = true;
+        }
+        if (lastBrakeVal == null || !lastBrakeVal.equals(t.getBrake())) {
+            lastNoOpBrake.update(t.getBrake());
+            changed = true;
+        }
+        if (lastSteerVal == null || !lastSteerVal.equals(t.getSteer())) {
+            lastNoOpSteer.update(t.getSteer());
+            changed = true;
+        }
+
+        if (changed) {
+            lastNoOpCheckTime.update(now);
+            return;
+        }
+
+        if (lastChanged == null) {
+            lastNoOpCheckTime.update(now);
+            return;
+        }
+
+        if (now - lastChanged >= 3000) {
+            out.collect(mapper.writeValueAsString(getEventDTO(EventType.NO_OPERATION, t, time)));
+            lastNoOpCheckTime.update(now);
+        }
+    }
+
+    // 급회전
+    private void detectSharpTurn(Telemetry t, LocalDateTime time, Collector<String> out) throws Exception {
+        if (t.velocity <= 30) {
+            wasSharpTurn.update(false);
+            return;
+        }
+
+        double steerRatio = Math.abs(t.getSteer());
+        if (steerRatio <= 0.6) {
+            wasSharpTurn.update(false);
+            return;
+        }
+
+        if (Boolean.TRUE.equals(wasSharpTurn.value())) return;
+
+        out.collect(mapper.writeValueAsString(getEventDTO(EventType.SHARP_TURN, t, time)));
+        wasSharpTurn.update(true);
     }
 
     private Event getEventDTO(EventType type, Telemetry t, LocalDateTime time){

@@ -1,6 +1,5 @@
 package com.amazonaws.services.msf.dto;
 
-import com.amazonaws.services.msf.event.EventType;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.*;
 
