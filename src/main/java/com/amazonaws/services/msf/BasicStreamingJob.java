@@ -20,7 +20,7 @@ import java.util.Properties;
 public class BasicStreamingJob {
 
     private static final Logger LOGGER = LogManager.getLogger(BasicStreamingJob.class);
-    private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties.json";
+    private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties-dev.json";
     private static Map<String, Properties> loadApplicationProperties(StreamExecutionEnvironment env) throws IOException {
         if (env instanceof LocalStreamEnvironment) {
             LOGGER.info("Loading application properties from '{}'", LOCAL_APPLICATION_PROPERTIES_RESOURCE);
