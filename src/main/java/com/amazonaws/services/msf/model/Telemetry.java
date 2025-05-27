@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Getter
 @NoArgsConstructor
 @ToString
@@ -12,6 +14,7 @@ import lombok.*;
 public class Telemetry {
     public Long userId;
     public Long driveId;
+    public LocalDateTime time;
     public double velocity;         // km/h 기준
     @JsonProperty("Accelero_x") public double accelX;
     @JsonProperty("Accelero_y") public double accelY;

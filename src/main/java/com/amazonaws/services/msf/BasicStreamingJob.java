@@ -1,7 +1,6 @@
 package com.amazonaws.services.msf;
 
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
-import com.amazonaws.services.msf.model.Telemetry;
 import com.amazonaws.services.msf.processor.EventDetector;
 import com.amazonaws.services.msf.sink.SqsSink;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -21,7 +20,7 @@ import java.util.Properties;
 public class BasicStreamingJob {
 
     private static final Logger LOGGER = LogManager.getLogger(BasicStreamingJob.class);
-    private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties.json";
+    private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties-dev.json";
     private static Map<String, Properties> loadApplicationProperties(StreamExecutionEnvironment env) throws IOException {
         if (env instanceof LocalStreamEnvironment) {
             LOGGER.info("Loading application properties from '{}'", LOCAL_APPLICATION_PROPERTIES_RESOURCE);
