@@ -1,9 +1,15 @@
 package com.amazonaws.services.msf;
 
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
+import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.processor.EventDetector;
+import com.amazonaws.services.msf.sink.RdsSink;
 import com.amazonaws.services.msf.sink.SqsSink;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -18,7 +24,9 @@ import java.util.Properties;
 
 
 public class BasicStreamingJob {
-
+    private static final ObjectMapper mapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private static final Logger LOGGER = LogManager.getLogger(BasicStreamingJob.class);
     private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties-dev.json";
     private static Map<String, Properties> loadApplicationProperties(StreamExecutionEnvironment env) throws IOException {
@@ -56,8 +64,13 @@ public class BasicStreamingJob {
         DataStream<String> printed = logInputData(detected);
 
         // 3) SQS 전송
-        String queueUrl = applicationParameters.get("Sqs0").getProperty("queue.url");
-        printed.addSink(new SqsSink(queueUrl)).name("SQS Sink");
+
+        DataStream<Event> events = detected
+                .map(json -> mapper.readValue(json, Event.class), TypeInformation.of(Event.class))
+                .name("Json → Event");
+
+        events.addSink(RdsSink.create(applicationParameters.get("Rds0")))
+                .name("RDS Sink");
 
         env.execute("Kinesis → Event Detection → SQS");
     }
