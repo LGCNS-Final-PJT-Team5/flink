@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @ToString
 public class Event {
-    public Long userId;           // 없으면 0L 등 기본값
+    public String userId;
     public String type;             // EventType의 코드값
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS")
     public LocalDateTime time;    // ISO-8601
     public double gnssX;           // "37.1234,127.5678"
     public double gnssY;           // "37.1234,127.5678"
-    public double driveId;        // Telemetry.driveId
+    public String driveId;        // Telemetry.driveId
 }
