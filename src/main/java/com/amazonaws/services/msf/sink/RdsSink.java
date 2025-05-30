@@ -18,8 +18,8 @@ public class RdsSink {
                 new JdbcStatementBuilder<Event>() {
                     @Override
                     public void accept(PreparedStatement ps, Event e) throws SQLException {
-                        ps.setLong(1, e.getUserId());
-                        ps.setDouble(2, e.getDriveId());
+                        ps.setString(1, e.getUserId());
+                        ps.setString(2, e.getDriveId());
                         ps.setString(3, e.getType());
                         ps.setTimestamp(4, java.sql.Timestamp.valueOf(e.getTime()));
                         ps.setDouble(5, e.getGnssX());
