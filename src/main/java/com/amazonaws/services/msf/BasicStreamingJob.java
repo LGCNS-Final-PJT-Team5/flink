@@ -64,11 +64,13 @@ public class BasicStreamingJob {
         DataStream<String> printed = logInputData(detected);
 
         // 3) SQS 전송
+        String queueUrl = applicationParameters.get("Sqs0").getProperty("queue.url");
+        printed.addSink(new SqsSink(queueUrl)).name("SQS Sink");
+
 
         DataStream<Event> events = detected
                 .map(json -> mapper.readValue(json, Event.class), TypeInformation.of(Event.class))
                 .name("Json → Event");
-
         events.addSink(RdsSink.create(applicationParameters.get("Rds0")))
                 .name("RDS Sink");
 
