@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 @Builder
 @AllArgsConstructor
 public class Telemetry {
-    public Long userId;
-    public Long driveId;
+    public String userId;
+    public String driveId;
     public LocalDateTime time;
     public double velocity;         // km/h 기준
     @JsonProperty("Accelero_x") public double accelX;
