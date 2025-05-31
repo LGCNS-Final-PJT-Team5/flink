@@ -28,8 +28,8 @@ public class RdsSink {
                     }
                 },
                 JdbcExecutionOptions.builder()
-                        .withBatchSize(1)
-                        .withBatchIntervalMs(200)
+                        .withBatchSize(5)
+                        .withBatchIntervalMs(1000)
                         .withMaxRetries(3)
                         .build(),
                 new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
