@@ -2,18 +2,24 @@ package com.amazonaws.services.msf;
 
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
 import com.amazonaws.services.msf.dto.Event;
-import com.amazonaws.services.msf.processor.EventDetector;
+import com.amazonaws.services.msf.model.Telemetry;
+import com.amazonaws.services.msf.operator.accel.AccelDecelFn;
+import com.amazonaws.services.msf.operator.collision.CollisionFn;
+import com.amazonaws.services.msf.operator.idle.IdleTimerFn;
+import com.amazonaws.services.msf.operator.invasion.InvasionFn;
+import com.amazonaws.services.msf.operator.nooperation.NoOpTimerFn;
+import com.amazonaws.services.msf.operator.overspeed.OverspeedTimerFn;
+import com.amazonaws.services.msf.operator.safedistance.SafeDistanceFn;
+import com.amazonaws.services.msf.operator.sharpturn.SharpTurnFn;
 import com.amazonaws.services.msf.sink.RdsSink;
 import com.amazonaws.services.msf.sink.SqsSink;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.amazonaws.services.msf.util.JsonMapper;
+import com.amazonaws.services.msf.util.WatermarkFactory;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.connectors.kinesis.FlinkKinesisConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -24,11 +30,10 @@ import java.util.Properties;
 
 
 public class BasicStreamingJob {
-    private static final ObjectMapper mapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private static final Logger LOGGER = LogManager.getLogger(BasicStreamingJob.class);
     private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties-dev.json";
+    private static final int TASK = 5;
+
     private static Map<String, Properties> loadApplicationProperties(StreamExecutionEnvironment env) throws IOException {
         if (env instanceof LocalStreamEnvironment) {
             LOGGER.info("Loading application properties from '{}'", LOCAL_APPLICATION_PROPERTIES_RESOURCE);
@@ -48,33 +53,45 @@ public class BasicStreamingJob {
 
 
     public static void main(String[] args) throws Exception {
-        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        final Map<String, Properties> applicationParameters = loadApplicationProperties(env);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.enableCheckpointing(30_000);
+        final Map<String,Properties> appProps =
+                BasicStreamingJob.loadApplicationProperties(env);
 
-        SourceFunction<String> source = createSource(applicationParameters.get("InputStream0"));
-        DataStream<String> raw = env.addSource(source, "Kinesis Source");
-
-        // 1) 이벤트 감지
-        DataStream<String> detected = raw
-                .keyBy(value -> 0)
-                .flatMap(new EventDetector())
-                .name("Event Detector");
-
-        // 2) 로그 찍고
-        DataStream<String> printed = logInputData(detected);
-
-        // 3) SQS 전송
-        String queueUrl = applicationParameters.get("Sqs0").getProperty("queue.url");
-        printed.addSink(new SqsSink(queueUrl)).name("SQS Sink");
+        // 1. Kinesis Source
+        KeyedStream<Telemetry, String> keyed = env
+                .setParallelism(TASK)// 각 연산자마다 N개의 task(연산자의 병렬 실행 인스턴스) 생성
+                .addSource(BasicStreamingJob.createSource(appProps.get("InputStream0")))
+                .name("Kinesis Source")
+                .map(json -> JsonMapper.MAPPER.readValue(json, Telemetry.class))
+                .assignTimestampsAndWatermarks(WatermarkFactory.telemetry())
+                .keyBy(Telemetry::getDriveId);
 
 
-        DataStream<Event> events = detected
-                .map(json -> mapper.readValue(json, Event.class), TypeInformation.of(Event.class))
-                .name("Json → Event");
-        events.addSink(RdsSink.create(applicationParameters.get("Rds0")))
+        // 2. 연산자 연결
+        DataStream<Event> events = keyed
+                .process(new IdleTimerFn()).name("Idle")
+                .union(
+                        keyed.flatMap(new AccelDecelFn()).name("AccelDecel"),
+                        keyed.process(new NoOpTimerFn()).name("NoOp"),
+                        keyed.process(new OverspeedTimerFn()).name("Overspeed"),
+                        keyed.flatMap(new SharpTurnFn()).name("SharpTurn"),
+                        keyed.flatMap(new InvasionFn()).name("Invasion"),
+                        keyed.flatMap(new SafeDistanceFn()).name("SafeDistance"),
+                        keyed.flatMap(new CollisionFn()).name("Collision")
+                );
+
+        // 3. SQS Sinks
+        String queueUrl = appProps.get("Sqs0").getProperty("queue.url");
+        events.map(e -> JsonMapper.MAPPER.writeValueAsString(e))
+                .addSink(new SqsSink(queueUrl))
+                .name("SQS Sink");
+
+        events.addSink(RdsSink.create(appProps.get("Rds0")))
                 .name("RDS Sink");
 
-        env.execute("Kinesis → Event Detection → SQS");
+        // 4. RDS Sinks
+        env.execute("Vehicle-Event Pipeline");
     }
 
     private static DataStream<String> logInputData(DataStream<String> input) {
