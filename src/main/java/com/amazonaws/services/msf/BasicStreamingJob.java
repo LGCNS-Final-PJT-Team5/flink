@@ -63,7 +63,10 @@ public class BasicStreamingJob {
                 .setParallelism(TASK)// 각 연산자마다 N개의 task(연산자의 병렬 실행 인스턴스) 생성
                 .addSource(BasicStreamingJob.createSource(appProps.get("InputStream0")))
                 .name("Kinesis Source")
-                .map(json -> JsonMapper.MAPPER.readValue(json, Telemetry.class))
+                .map(json -> {
+                    // LOGGER.info("📥 Raw input from Kinesis: {}", json);
+                    return JsonMapper.MAPPER.readValue(json, Telemetry.class);
+                })
                 .assignTimestampsAndWatermarks(WatermarkFactory.telemetry())
                 .keyBy(Telemetry::getDriveId);
 
@@ -79,11 +82,18 @@ public class BasicStreamingJob {
                         keyed.flatMap(new InvasionFn()).name("Invasion"),
                         keyed.flatMap(new SafeDistanceFn()).name("SafeDistance"),
                         keyed.flatMap(new CollisionFn()).name("Collision")
-                );
+                ).map(event -> {
+                    // LOGGER.info("📤 Event generated: {}", event);
+                    return event;
+                });
 
         // 3. SQS Sinks
         String queueUrl = appProps.get("Sqs0").getProperty("queue.url");
-        events.map(e -> JsonMapper.MAPPER.writeValueAsString(e))
+        events.map(e -> {
+                    String json = JsonMapper.MAPPER.writeValueAsString(e);
+                    LOGGER.info("🚚 Sending to SQS: {}", json);
+                    return json;
+                })
                 .addSink(new SqsSink(queueUrl))
                 .name("SQS Sink");
 
