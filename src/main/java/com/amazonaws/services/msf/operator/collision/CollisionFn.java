@@ -3,6 +3,7 @@ package com.amazonaws.services.msf.operator.collision;
 import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.event.EventType;
 import com.amazonaws.services.msf.model.Telemetry;
+import com.amazonaws.services.msf.util.EventFactory;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -30,11 +31,7 @@ public class CollisionFn extends RichFlatMapFunction<Telemetry, Event> {
 
         if (Boolean.TRUE.equals(was)) {return;}
 
-        out.collect(Event.builder()
-                .userId(t.userId)
-                .type(EventType.COLLISION.toString())
-                .time(t.time)
-                .build());
+        out.collect(EventFactory.from(t, EventType.COLLISION));
 
         wasCollision.update(true);
     }

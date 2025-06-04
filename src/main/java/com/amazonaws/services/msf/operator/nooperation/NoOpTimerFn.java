@@ -3,6 +3,7 @@ package com.amazonaws.services.msf.operator.nooperation;
 import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.event.EventType;
 import com.amazonaws.services.msf.model.Telemetry;
+import com.amazonaws.services.msf.util.EventFactory;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;
@@ -23,18 +24,22 @@ public class NoOpTimerFn extends KeyedProcessFunction<String, Telemetry, Event> 
     private transient ValueState<Double> lastBrake;
     private transient ValueState<Double> lastSteer;
 
+    private transient ValueState<Telemetry> lastTelemetry;
     @Override
     public void open(Configuration parameters) {
         lastChanged   = getRuntimeContext().getState(new ValueStateDescriptor<>("lastChanged", Long.class));
         lastThrottle  = getRuntimeContext().getState(new ValueStateDescriptor<>("lastThrottle", Double.class));
         lastBrake     = getRuntimeContext().getState(new ValueStateDescriptor<>("lastBrake", Double.class));
         lastSteer     = getRuntimeContext().getState(new ValueStateDescriptor<>("lastSteer", Double.class));
+        lastTelemetry = getRuntimeContext().getState(new ValueStateDescriptor<>("lastTel",      Telemetry.class));
     }
 
 
     // 조작 없음 3 초 지속 — 3 초마다 재알림
     @Override
     public void processElement(Telemetry t, Context ctx, Collector<Event> out) throws Exception {
+        lastTelemetry.update(t);
+
         boolean changed = false;
 
         if (!equals(lastThrottle.value(), t.Throttle)) { lastThrottle.update(t.Throttle); changed = true; }
@@ -49,14 +54,13 @@ public class NoOpTimerFn extends KeyedProcessFunction<String, Telemetry, Event> 
 
     @Override
     public void onTimer(long ts, OnTimerContext ctx, Collector<Event> out) throws Exception {
+        Telemetry t = lastTelemetry.value();
+
         Long last = lastChanged.value();
+
         if (last == null || ts - last < NOOP_MS) return;
 
-        out.collect(Event.builder()
-                .userId(ctx.getCurrentKey())
-                .type(EventType.NO_OPERATION.toString())
-                .time(LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneId.of("Asia/Seoul")))
-                .build());
+        out.collect(EventFactory.from(t, EventType.NO_OPERATION));
 
         // 다음 3초 후 재알림
         ctx.timerService().registerEventTimeTimer(ts + NOOP_MS);

@@ -3,6 +3,7 @@ package com.amazonaws.services.msf.operator.safedistance;
 import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.event.EventType;
 import com.amazonaws.services.msf.model.Telemetry;
+import com.amazonaws.services.msf.util.EventFactory;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -29,10 +30,6 @@ public class SafeDistanceFn extends RichFlatMapFunction<Telemetry, Event> {
 
         if (!tooClose || Boolean.TRUE.equals(prev)) {return;}
 
-        out.collect(Event.builder()
-                .userId(t.userId)
-                .type(EventType.SAFE_DISTANCE_VIOLATION.toString())
-                .time(t.time)
-                .build());
+        out.collect(EventFactory.from(t, EventType.SAFE_DISTANCE_VIOLATION));
     }
 }

@@ -3,6 +3,7 @@ package com.amazonaws.services.msf.operator.invasion;
 import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.event.EventType;
 import com.amazonaws.services.msf.model.Telemetry;
+import com.amazonaws.services.msf.util.EventFactory;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -27,10 +28,6 @@ public class InvasionFn extends RichFlatMapFunction<Telemetry, Event> {
 
         if (!isInvasion || Boolean.TRUE.equals(prev)) {return;}
 
-        out.collect(Event.builder()
-                .userId(t.userId)
-                .type(EventType.INVASION.toString())
-                .time(t.time)
-                .build());
+        out.collect(EventFactory.from(t, EventType.INVASION));
     }
 }

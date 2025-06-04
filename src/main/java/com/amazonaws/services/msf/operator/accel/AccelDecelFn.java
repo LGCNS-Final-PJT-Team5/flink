@@ -3,6 +3,7 @@ package com.amazonaws.services.msf.operator.accel;
 import com.amazonaws.services.msf.dto.Event;
 import com.amazonaws.services.msf.event.EventType;
 import com.amazonaws.services.msf.model.Telemetry;
+import com.amazonaws.services.msf.util.EventFactory;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -29,18 +30,10 @@ public class AccelDecelFn extends RichFlatMapFunction<Telemetry, Event> {
         double diff = t.velocity - prev;
 
         if (diff >= 10) {
-            out.collect(Event.builder()
-                    .userId(t.userId)
-                    .type(EventType.RAPID_ACCELERATION.toString())
-                    .time(t.time)
-                    .build());
+            out.collect(EventFactory.from(t, EventType.RAPID_ACCELERATION));
         }
         if (diff <= -10) {
-            out.collect(Event.builder()
-                    .userId(t.userId)
-                    .type(EventType.RAPID_DECELERATION.toString())
-                    .time(t.time)
-                    .build());
+            out.collect(EventFactory.from(t, EventType.RAPID_DECELERATION));
         }
     }
 }
