@@ -29,10 +29,10 @@ public class AccelDecelFn extends RichFlatMapFunction<Telemetry, Event> {
 
         double diff = t.velocity - prev;
 
-        if (diff >= 10) {
+        if (diff >= 25) {
             out.collect(EventFactory.from(t, EventType.RAPID_ACCELERATION));
         }
-        if (diff <= -10) {
+        if (diff <= -25) {
             out.collect(EventFactory.from(t, EventType.RAPID_DECELERATION));
         }
     }
