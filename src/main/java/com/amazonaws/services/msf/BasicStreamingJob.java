@@ -32,7 +32,7 @@ import java.util.Properties;
 public class BasicStreamingJob {
     private static final Logger LOGGER = LogManager.getLogger(BasicStreamingJob.class);
     private static final String LOCAL_APPLICATION_PROPERTIES_RESOURCE = "flink-application-properties-dev.json";
-    private static final int TASK = 5;
+    private static final int TASK = 1;
 
     private static Map<String, Properties> loadApplicationProperties(StreamExecutionEnvironment env) throws IOException {
         if (env instanceof LocalStreamEnvironment) {
@@ -83,7 +83,7 @@ public class BasicStreamingJob {
                         keyed.flatMap(new SafeDistanceFn()).name("SafeDistance"),
                         keyed.flatMap(new CollisionFn()).name("Collision")
                 ).map(event -> {
-                    // LOGGER.info("📤 Event generated: {}", event);
+                     // LOGGER.info("📤 Event generated: {}", event);
                     return event;
                 });
 
@@ -91,7 +91,7 @@ public class BasicStreamingJob {
         String queueUrl = appProps.get("Sqs0").getProperty("queue.url");
         events.map(e -> {
                     String json = JsonMapper.MAPPER.writeValueAsString(e);
-                    LOGGER.info("🚚 Sending to SQS: {}", json);
+                    // LOGGER.info("🚚 Sending to SQS: {}", json);
                     return json;
                 })
                 .addSink(new SqsSink(queueUrl))
