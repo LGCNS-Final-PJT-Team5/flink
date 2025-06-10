@@ -10,11 +10,11 @@ public final class EventFactory {
     }
 
 
-    public static Event from(Telemetry t, EventType type) {
+    public static Event from(Telemetry t, EventType eventType) {
         return Event.builder()
                 .userId(t.userId)
                 .driveId(t.driveId)
-                .type(type.toString())
+                .eventType(eventType.toString())
                 .time(t.time)
                 .gnssX(t.gnssX)
                 .gnssY(t.gnssY)
