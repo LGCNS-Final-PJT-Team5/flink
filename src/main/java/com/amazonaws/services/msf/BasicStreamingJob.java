@@ -97,10 +97,13 @@ public class BasicStreamingJob {
                     return json;
                 })
                 .addSink(new SqsSink(queueUrl))
-                .name("SQS Sink");
+                .name("SQS Sink")
+                .disableChaining().setParallelism(4);
+
 
         events.addSink(RdsSink.create(appProps.get("Rds0")))
-                .name("RDS Sink");
+                .name("RDS Sink")
+                .disableChaining();
 
         // 4. RDS Sinks
         env.execute("Vehicle-Event Pipeline");
