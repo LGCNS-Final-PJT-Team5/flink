@@ -14,7 +14,8 @@ public enum EventType {
     SHARP_TURN("급회전"),
     SAFE_DISTANCE_VIOLATION("안전 거리 미준수"),
 
-    COLLISION("충돌");
+    COLLISION("충돌"),
+    REACTION_DELAY("반응속도 미흡");
 
     private final String description;
 

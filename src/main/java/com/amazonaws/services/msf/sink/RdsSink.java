@@ -20,7 +20,7 @@ public class RdsSink {
                     public void accept(PreparedStatement ps, Event e) throws SQLException {
                         ps.setString(1, e.getUserId());
                         ps.setString(2, e.getDriveId());
-                        ps.setString(3, e.getType());
+                        ps.setString(3, e.getEventType());
                         ps.setTimestamp(4, java.sql.Timestamp.valueOf(e.getTime()));
                         ps.setDouble(5, e.getGnssX());
                         ps.setDouble(6, e.getGnssY());
