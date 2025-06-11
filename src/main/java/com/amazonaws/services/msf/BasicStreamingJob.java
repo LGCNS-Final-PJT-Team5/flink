@@ -9,6 +9,7 @@ import com.amazonaws.services.msf.operator.idle.IdleTimerFn;
 import com.amazonaws.services.msf.operator.invasion.InvasionFn;
 import com.amazonaws.services.msf.operator.nooperation.NoOpTimerFn;
 import com.amazonaws.services.msf.operator.overspeed.OverspeedTimerFn;
+import com.amazonaws.services.msf.operator.reactiondelay.ReactionDelayFn;
 import com.amazonaws.services.msf.operator.safedistance.SafeDistanceFn;
 import com.amazonaws.services.msf.operator.sharpturn.SharpTurnFn;
 import com.amazonaws.services.msf.sink.RdsSink;
@@ -81,7 +82,8 @@ public class BasicStreamingJob {
                         keyed.flatMap(new SharpTurnFn()).name("SharpTurn"),
                         keyed.flatMap(new InvasionFn()).name("Invasion"),
                         keyed.flatMap(new SafeDistanceFn()).name("SafeDistance"),
-                        keyed.flatMap(new CollisionFn()).name("Collision")
+                        keyed.flatMap(new CollisionFn()).name("Collision"),
+                        keyed.process(new ReactionDelayFn()).name("ReactionDelay")
                 ).map(event -> {
                      // LOGGER.info("📤 Event generated: {}", event);
                     return event;
@@ -91,7 +93,7 @@ public class BasicStreamingJob {
         String queueUrl = appProps.get("Sqs0").getProperty("queue.url");
         events.map(e -> {
                     String json = JsonMapper.MAPPER.writeValueAsString(e);
-                    // LOGGER.info("🚚 Sending to SQS: {}", json);
+                    LOGGER.info("🚚 Sending to SQS: {}", json);
                     return json;
                 })
                 .addSink(new SqsSink(queueUrl))
